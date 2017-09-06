@@ -7,7 +7,7 @@ Face++ provides emotion, smile, and beauty score
 
 ## Installation
 
-`sudo pip install -r requirements.txt`
+`sudo pip install -r requirements.txt`  
 Edit config.py, replacing my API keys with your own
 
 ## Test
