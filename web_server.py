@@ -16,6 +16,8 @@ def default_post():
       binary_data = request.files.get('pic').file.read()
   else:
       binary_data = request.body.read()
+  if not binary_data:
+    abort(400, "no image data recieved")
   image = base64.b64encode(binary_data)
   results = req_both(image)
   response.content_type = 'application/json'
