@@ -1,0 +1,4 @@
+grequests
+bottle
+numpy
+gunicorn
