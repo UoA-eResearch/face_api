@@ -1,14 +1,12 @@
 #!/usr/bin/env python
-from get_attributes import req_both
+from get_attributes import req_all
 from bottle import *
-import base64
 import json
 BaseRequest.MEMFILE_MAX = 1e8
 
 @get('/')
 def default_get():
   return static_file("index.html", ".")
-
 
 @post('/')
 def default_post():
@@ -18,8 +16,7 @@ def default_post():
       binary_data = request.body.read()
   if not binary_data:
     abort(400, "no image data recieved")
-  image = base64.b64encode(binary_data)
-  results = req_both(image)
+  results = req_all(binary_data)
   response.content_type = 'application/json'
   return json.dumps(results, indent=4)
 

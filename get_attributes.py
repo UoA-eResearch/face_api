@@ -5,6 +5,7 @@ import sys
 import time
 import numpy as np
 import config
+import pprint
 
 races = ["asian", "black", "hispanic", "other", "white"]
 
@@ -35,6 +36,10 @@ def req_facepp(image):
   r = grequests.post("https://api-us.faceplusplus.com/facepp/v3/detect", data=payload)
   return r
 
+def req_omc(image):
+  r = grequests.post(config.OMC_SERVER, data=image)
+  return r
+
 def race(obj):
   d = { k: v for k, v in obj.items() if k in races }
   racelist = []
@@ -55,7 +60,7 @@ def emote(obj):
     return ", ".join(emotes)
 
 def to_text(obj):
-  return """Age: {}
+  s = """Age: {}
 Gender: {}
 Ethnicity: {}
 Emotion: {}
@@ -74,28 +79,62 @@ Beauty: F:{:.0f}%, M:{:.0f}%
   obj['fpp']['attributes']['beauty']['female_score'],
   obj['fpp']['attributes']['beauty']['male_score'],
 )
+  if obj['of']:
+    s+= """Recognition confidence: {:.2f}%
+UPI: {}
+Name: {}
+Position: {}
+Department: {}
+Reports to: {}
+""".format(
+  obj['of']['confidence'],
+  obj['of']['uid'],
+  obj['of']['data']['fullName'],
+  obj['of']['data']['positions'][0]['position'],
+  obj['of']['data']['positions'][0]['department']['name'],
+  obj['of']['data']['positions'][0]['reportsTo']['name'],
+)
+  return s
 
-def req_both(image):
-  kairos = req_kairos(image)
-  fpp = req_facepp(image)
-  # req both concurrently
-  results = grequests.map((kairos,fpp))
+def req_all(binary_data):
+  b64image = base64.b64encode(binary_data)
+  kairos = req_kairos(b64image)
+  fpp = req_facepp(b64image)
+  requests = [kairos, fpp]
+  if hasattr(config, 'OMC_SERVER'):
+    omc = req_omc(binary_data)
+    requests.append(omc)
+  # req all concurrently
+  results = grequests.map(requests)
   kairos = results[0].json()
   fpp = results[1].json()
+  if hasattr(config, 'OMC_SERVER'):
+    omc = results[2].json()
+  else:
+    omc = []
   faces = []
   for kf in kairos['images'][0]['faces']:
     minD = 9999
     minFF = None
+    kfc = np.array((kf['topLeftX'] + kf['width'] / 2, kf['topLeftY'] + kf['height'] / 2))
     for ff in fpp['faces']:
-      kfc = np.array((kf['topLeftX'] + kf['width'] / 2, kf['topLeftY'] + kf['height'] / 2))
       ffc = np.array((ff['face_rectangle']['left'] + ff['face_rectangle']['width'] / 2, ff['face_rectangle']['top'] + ff['face_rectangle']['height'] / 2))
       d = np.linalg.norm(kfc - ffc)
       if d < minD:
         minD = d
         minFF = ff
+    minD = 9999
+    minOMC = None
+    for of in omc:
+      ofc = np.array((of['face_rectangle']['left'] + of['face_rectangle']['width'] / 2, of['face_rectangle']['top'] + of['face_rectangle']['height'] / 2))
+      d = np.linalg.norm(ofc - kfc)
+      if d < minD:
+        minD = d
+        minOMC = of
     attrs = {
       "kairos": kf,
-      "fpp": minFF
+      "fpp": minFF,
+      "of": minOMC
     }
     attrs['text'] = to_text(attrs)
     faces.append(attrs)
@@ -104,9 +143,9 @@ def req_both(image):
 
 if __name__ == "__main__":
   with open(sys.argv[1]) as f:
-    image = base64.b64encode(f.read())
+    image = f.read()
   s = time.time()
-  result = req_both(image)
+  result = req_all(image)
   print("{} faces in image".format(len(result)))
   for f in result:
     print(f['text'])
