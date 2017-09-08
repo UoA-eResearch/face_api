@@ -6,8 +6,14 @@ import time
 import numpy as np
 import config
 import pprint
+import cv2
+import datetime
+import os
 
 races = ["asian", "black", "hispanic", "other", "white"]
+
+def exception_handler(request, exception):
+  print(request, exception)
 
 def req_kairos(image):
   headers = {
@@ -92,11 +98,26 @@ Reports to: {}
   obj['of']['data']['fullName'],
   obj['of']['data']['positions'][0]['position'],
   obj['of']['data']['positions'][0]['department']['name'],
-  obj['of']['data']['positions'][0]['reportsTo']['name'],
+  obj['of']['data']['positions'][0].get('reportsTo', {'name': 'Unknown'})['name'],
 )
   return s
 
+def downscale(binary_data):
+  img_array = np.asarray(bytearray(binary_data), dtype=np.uint8)
+  image_data = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+  print(image_data.shape)
+  height, width, channels = image_data.shape
+  image_data = cv2.resize(image_data, (0, 0), fx=.5, fy=.5)
+  print(image_data.shape)
+  ret, buf = cv2.imencode(".jpg", image_data)
+  return buf.tostring()
+
 def req_all(binary_data):
+  print("Got image of size {}".format(len(binary_data)))
+  binary_data = downscale(binary_data)
+  print("Resized to {}".format(len(binary_data)))
+  with open(os.path.join(config.IMAGE_DIR, str(datetime.datetime.now())), 'w') as f:
+    f.write(binary_data)
   b64image = base64.b64encode(binary_data)
   kairos = req_kairos(b64image)
   fpp = req_facepp(b64image)
@@ -105,14 +126,25 @@ def req_all(binary_data):
     omc = req_omc(binary_data)
     requests.append(omc)
   # req all concurrently
-  results = grequests.map(requests)
+  results = grequests.map(requests, exception_handler=exception_handler)
   kairos = results[0].json()
-  fpp = results[1].json()
+  try:
+    fpp = results[1].json()
+  except:
+    print(results[1].content)
+    fpp = {'faces':[]}
   if hasattr(config, 'OMC_SERVER'):
-    omc = results[2].json()
+    try:
+      omc = results[2].json()
+    except:
+      print(results[2])
+      omc = []
   else:
     omc = []
   faces = []
+  if 'images' not in kairos:
+    print(kairos)
+    return []
   for kf in kairos['images'][0]['faces']:
     minD = 9999
     minFF = None

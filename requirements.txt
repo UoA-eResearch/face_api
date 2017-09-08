@@ -2,3 +2,4 @@ grequests
 bottle
 numpy
 gunicorn
+opencv-python
