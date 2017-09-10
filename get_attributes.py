@@ -69,24 +69,27 @@ def to_text(obj):
   s = """Age: {}
 Gender: {}
 Ethnicity: {}
-Emotion: {}
 Glasses: {}
 Lips: {}
-Smile: {:.0f}%
-Beauty: F:{:.0f}%, M:{:.0f}%
 """.format(
   obj['kairos']['attributes']['age'],
   obj['kairos']['attributes']['gender']['type'],
   race(obj['kairos']['attributes']),
-  emote(obj['fpp']['attributes']['emotion']),
   obj['kairos']['attributes']['glasses'],
   obj['kairos']['attributes']['lips'],
+)
+  if obj['fpp']:
+    s+="""Emotion: {}
+Smile: {:.0f}%
+Beauty: F:{:.0f}%, M:{:.0f}%
+""".format(
+  emote(obj['fpp']['attributes']['emotion']),
   obj['fpp']['attributes']['smile']['value'],
   obj['fpp']['attributes']['beauty']['female_score'],
-  obj['fpp']['attributes']['beauty']['male_score'],
+  obj['fpp']['attributes']['beauty']['male_score']
 )
   if obj['of']:
-    s+= """Recognition confidence: {:.2f}%
+    s+= """Recognition confidence: {:.2%}
 UPI: {}
 Name: {}
 Position: {}
