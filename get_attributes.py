@@ -9,8 +9,10 @@ import pprint
 import cv2
 import datetime
 import os
+import imghdr
 
 races = ["asian", "black", "hispanic", "other", "white"]
+scale = 0.5
 
 def exception_handler(request, exception):
   print(request, exception)
@@ -110,7 +112,7 @@ def downscale(binary_data):
   image_data = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
   print(image_data.shape)
   height, width, channels = image_data.shape
-  image_data = cv2.resize(image_data, (0, 0), fx=.5, fy=.5)
+  image_data = cv2.resize(image_data, (0, 0), fx=scale, fy=scale)
   print(image_data.shape)
   ret, buf = cv2.imencode(".jpg", image_data)
   return buf.tostring()
@@ -119,8 +121,12 @@ def req_all(binary_data):
   print("Got image of size {}".format(len(binary_data)))
   binary_data = downscale(binary_data)
   print("Resized to {}".format(len(binary_data)))
-  with open(os.path.join(config.IMAGE_DIR, str(datetime.datetime.now())), 'w') as f:
-    f.write(binary_data)
+  if config.IMAGE_DIR:
+    now = datetime.datetime.now()
+    ftype = imghdr.what("", binary_data)
+    filename = os.path.join(config.IMAGE_DIR, "{}.{}".format(now, ftype))
+    with open(filename, 'w') as f:
+      f.write(binary_data)
   b64image = base64.b64encode(binary_data)
   kairos = req_kairos(b64image)
   fpp = req_facepp(b64image)
@@ -148,6 +154,17 @@ def req_all(binary_data):
   if 'images' not in kairos:
     print(kairos)
     return []
+  # rescale pixel coordinates
+  for kf in kairos['images'][0]['faces']:
+    for key in kf:
+      if key.endswith("Y") or key.endswith("X") or key == "width" or key == "height":
+        kf[key] *= 1.0 / scale
+  for ff in fpp['faces']:
+    for key in ff['face_rectangle']:
+      ff['face_rectangle'][key] *= 1.0 / scale
+  for of in omc:
+    for key in of['face_rectangle']:
+      of['face_rectangle'][key] *= 1.0 / scale
   for kf in kairos['images'][0]['faces']:
     minD = 9999
     minFF = None
@@ -182,6 +199,7 @@ if __name__ == "__main__":
   s = time.time()
   result = req_all(image)
   print("{} faces in image".format(len(result)))
+  pprint.pprint(result)
   for f in result:
     print(f['text'])
   print("got attrs, took {}s".format(time.time() - s))
