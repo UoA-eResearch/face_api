@@ -117,16 +117,19 @@ def downscale(binary_data):
   ret, buf = cv2.imencode(".jpg", image_data)
   return buf.tostring()
 
-def req_all(binary_data):
-  print("Got image of size {}".format(len(binary_data)))
-  binary_data = downscale(binary_data)
-  print("Resized to {}".format(len(binary_data)))
+def save_image(binary_data):
   if config.IMAGE_DIR:
     now = datetime.datetime.now()
     ftype = imghdr.what("", binary_data)
     filename = os.path.join(config.IMAGE_DIR, "{}.{}".format(now, ftype))
     with open(filename, 'w') as f:
       f.write(binary_data)
+
+def req_all(binary_data):
+  save_image(binary_data)
+  print("Got image of size {}".format(len(binary_data)))
+  binary_data = downscale(binary_data)
+  print("Resized to {}".format(len(binary_data)))
   b64image = base64.b64encode(binary_data)
   kairos = req_kairos(b64image)
   fpp = req_facepp(b64image)
