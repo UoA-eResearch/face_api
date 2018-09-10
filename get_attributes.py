@@ -17,22 +17,9 @@ scale = 0.5
 def exception_handler(request, exception):
   print(request, exception)
 
-def req_kairos(image):
-  headers = {
-    "app_id": config.KAIROS_APP_ID,
-    "app_key": config.KAIROS_APP_KEY
-  }
-
-  payload = {
-    "image": image
-  }
-
-  r = grequests.post("https://api.kairos.com/detect", headers=headers, json=payload)
-  return r
-
 def req_facepp(image):
 
-  attr="gender,age,smiling,emotion,headpose,facequality,blur,eyestatus,ethnicity,beauty"
+  attr="gender,age,smiling,emotion,headpose,facequality,blur,eyestatus,ethnicity,beauty,mouthstatus,skinstatus"
 
   payload = {
     "api_key": config.FACEPP_API_KEY,
@@ -68,27 +55,22 @@ def emote(obj):
     return ", ".join(emotes)
 
 def to_text(obj):
-  s = """Age: {}
+  s = ""
+  if obj['fpp']:
+    s += """Age: {}
 Gender: {}
 Ethnicity: {}
-Glasses: {}
-Lips: {}
-""".format(
-  obj['kairos']['attributes']['age'],
-  obj['kairos']['attributes']['gender']['type'],
-  race(obj['kairos']['attributes']),
-  obj['kairos']['attributes']['glasses'],
-  obj['kairos']['attributes']['lips'],
-)
-  if obj['fpp']:
-    s+="""Emotion: {}
+Emotion: {}
 Smile: {:.0f}%
 Beauty: F:{:.0f}%, M:{:.0f}%
 """.format(
+  obj['fpp']['attributes']['age']['value'],
+  obj['fpp']['attributes']['gender']['value'],
+  obj['fpp']['attributes']['ethnicity']['value'],
   emote(obj['fpp']['attributes']['emotion']),
   obj['fpp']['attributes']['smile']['value'],
-  obj['fpp']['attributes']['beauty']['female_score'],
-  obj['fpp']['attributes']['beauty']['male_score']
+  obj['fpp']['attributes'].get('beauty', {}).get('female_score'),
+  obj['fpp']['attributes'].get('beauty', {}).get('male_score')
 )
   if obj['of']:
     s+= """Recognition confidence: {:.2%}
@@ -131,64 +113,52 @@ def req_all(binary_data):
   binary_data = downscale(binary_data)
   print("Resized to {}".format(len(binary_data)))
   b64image = base64.b64encode(binary_data)
-  kairos = req_kairos(b64image)
   fpp = req_facepp(b64image)
-  requests = [kairos, fpp]
+  requests = [fpp]
   if hasattr(config, 'OMC_SERVER'):
     omc = req_omc(binary_data)
     requests.append(omc)
   # req all concurrently
   results = grequests.map(requests, exception_handler=exception_handler)
-  kairos = results[0].json()
   try:
-    fpp = results[1].json()
+    fpp = results[0].json()
   except:
-    print(results[1].content)
+    print(results[0].content)
     fpp = {'faces':[]}
   if hasattr(config, 'OMC_SERVER'):
     try:
-      omc = results[2].json()
+      omc = results[-1].json()
     except:
-      print(results[2])
+      print(results[-1])
       omc = []
   else:
     omc = []
   faces = []
-  if 'images' not in kairos:
-    print(kairos)
-    return []
   # rescale pixel coordinates
-  for kf in kairos['images'][0]['faces']:
-    for key in kf:
-      if key.endswith("Y") or key.endswith("X") or key == "width" or key == "height":
-        kf[key] *= 1.0 / scale
   for ff in fpp['faces']:
     for key in ff['face_rectangle']:
       ff['face_rectangle'][key] *= 1.0 / scale
   for of in omc:
     for key in of['face_rectangle']:
       of['face_rectangle'][key] *= 1.0 / scale
-  for kf in kairos['images'][0]['faces']:
-    minD = 9999
-    minFF = None
-    kfc = np.array((kf['topLeftX'] + kf['width'] / 2, kf['topLeftY'] + kf['height'] / 2))
-    for ff in fpp['faces']:
-      ffc = np.array((ff['face_rectangle']['left'] + ff['face_rectangle']['width'] / 2, ff['face_rectangle']['top'] + ff['face_rectangle']['height'] / 2))
-      d = np.linalg.norm(kfc - ffc)
-      if d < minD:
-        minD = d
-        minFF = ff
+  for ff in fpp['faces']:
+    ffc = np.array((ff['face_rectangle']['left'] + ff['face_rectangle']['width'] / 2, ff['face_rectangle']['top'] + ff['face_rectangle']['height'] / 2))
     minD = 9999
     minOMC = None
     for of in omc:
       ofc = np.array((of['face_rectangle']['left'] + of['face_rectangle']['width'] / 2, of['face_rectangle']['top'] + of['face_rectangle']['height'] / 2))
-      d = np.linalg.norm(ofc - kfc)
+      d = np.linalg.norm(ofc - ffc)
       if d < minD:
         minD = d
         minOMC = of
     attrs = {
-      "kairos": kf,
-      "fpp": minFF,
+      "kairos": {
+        "topLeftX": ff['face_rectangle']['left'],
+        "topLeftY": ff['face_rectangle']['top'],
+        "width": ff['face_rectangle']['width'],
+        "height": ff['face_rectangle']['height']
+      },
+      "fpp": ff,
       "of": minOMC
     }
     attrs['text'] = to_text(attrs)
