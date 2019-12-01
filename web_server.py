@@ -23,6 +23,9 @@ def default_post():
 port = int(os.environ.get('PORT', 8080))
 
 if __name__ == "__main__":
-    run(host='0.0.0.0', port=port, debug=True, server='gunicorn', workers=4)
+    try:
+      run(host='0.0.0.0', port=port, debug=True, server='gunicorn', workers=4)
+    except ImportError:
+      run(host='0.0.0.0', port=port, debug=True)
 
 app = default_app()
